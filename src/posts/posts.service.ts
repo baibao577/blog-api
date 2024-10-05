@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Post } from '../entities/post.entity';
@@ -54,12 +58,13 @@ export class PostsService {
       .createQueryBuilder('post')
       .leftJoinAndSelect('post.author', 'author')
       .leftJoinAndSelect('post.category', 'category')
+      .where('post.status = :status', { status: 'published' })
       .orderBy('post.createdAt', orderBy)
       .skip((page - 1) * limit)
       .take(limit);
 
     if (categoryId) {
-      queryBuilder.where('category.id = :categoryId', { categoryId });
+      queryBuilder.andWhere('category.id = :categoryId', { categoryId });
     }
 
     const [items, total] = await queryBuilder.getManyAndCount();
@@ -84,27 +89,56 @@ export class PostsService {
     return post;
   }
 
-  async update(id: number, updatePostDto: UpdatePostDto): Promise<Post> {
-    const post = await this.findOne(id);
+  async update(
+    id: number,
+    updatePostDto: UpdatePostDto,
+    userId: number,
+  ): Promise<Post> {
+    const post = await this.postsRepository.findOne({
+      where: { id },
+      relations: ['author', 'category'],
+    });
 
-    if (updatePostDto.categoryId) {
-      const category = await this.categoriesRepository.findOne({
-        where: { id: updatePostDto.categoryId },
-      });
-      if (!category) {
-        throw new NotFoundException(
-          `Category with ID "${updatePostDto.categoryId}" not found`,
-        );
-      }
-      post.category = category;
+    if (!post) {
+      throw new NotFoundException(`Post with ID "${id}" not found`);
     }
 
+    if (post.author.id !== userId) {
+      throw new UnauthorizedException(
+        'You are not authorized to edit this post',
+      );
+    }
+
+    // Handle category update
+    if (
+      updatePostDto.categoryId &&
+      updatePostDto.categoryId !== post.category.id
+    ) {
+      post.category.id = updatePostDto.categoryId;
+    }
+
+    // Update other fields
     Object.assign(post, updatePostDto);
+
+    // Remove categoryId from updatePostDto as it's not a direct property of Post entity
+    delete (updatePostDto as any).categoryId;
+
     return this.postsRepository.save(post);
   }
 
-  async remove(id: number): Promise<void> {
-    const post = await this.findOne(id);
+  async remove(id: number, userId: number) {
+    const post = await this.postsRepository.findOne({
+      where: { id },
+      relations: ['author'],
+    });
+    if (!post) {
+      throw new NotFoundException(`Post with ID "${id}" not found`);
+    }
+    if (post.author.id !== userId) {
+      throw new UnauthorizedException(
+        'You are not authorized to delete this post',
+      );
+    }
     await this.postsRepository.remove(post);
   }
 }

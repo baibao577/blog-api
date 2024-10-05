@@ -6,6 +6,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { Post } from './entities/post.entity';
 import { Author } from './entities/author.entity';
 import { Category } from './entities/category.entity';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { Category } from './entities/category.entity';
     PostsModule,
     AuthorsModule,
     CategoriesModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
